@@ -36,14 +36,9 @@ LLM_THINK_PATTERNS = [
     re.compile(r'\bActually looking at the constraints\b', re.IGNORECASE),
     re.compile(r'\bHowever, looking at the (paragraph|passage|text|content)\b', re.IGNORECASE),
     re.compile(r'\bThe narrative (flow|continues|passage)\b', re.IGNORECASE),
-    re.compile(r'^"[^"\n]{3,300}"\s*$', re.MULTILINE),
-    re.compile(r'^— ', re.MULTILINE),
 ]
 
-BILINGUAL_BLOCK_PAT = re.compile(
-    r'^"([^"\n]{3,300})"\s*\n\s*—[\s　]*(.+?)\s*$',
-    re.MULTILINE
-)
+THINKING_TAG_PAT = re.compile(r'<think>.*?</think>', re.DOTALL)
 
 def log(msg):
     ts = time.strftime('%H:%M:%S')
@@ -60,8 +55,7 @@ def check_chunk_anomaly(text):
     for pat in LLM_THINK_PATTERNS:
         if pat.search(text):
             return True
-    matches = list(BILINGUAL_BLOCK_PAT.finditer(text))
-    if len(matches) >= 2:
+    if THINKING_TAG_PAT.search(text):
         return True
     return False
 
@@ -69,9 +63,17 @@ def fix_chunk_llm_artifacts(text):
     if not check_chunk_anomaly(text):
         return text, False
 
+    fixed = False
+
+    # 1. 移除 <think>...</think> 标签及内容
+    new_text = THINKING_TAG_PAT.sub('', text)
+    if new_text != text:
+        fixed = True
+        text = new_text
+
+    # 2. 移除英文分析性语句
     lines = text.split('\n')
     fixed_lines = []
-    fixed = False
 
     skip_prefixes = (
         'The user wants me to translate', 'This appears to be', 'Key points to maintain',
@@ -81,35 +83,12 @@ def fix_chunk_llm_artifacts(text):
         'However, looking at the', 'The narrative',
     )
 
-    i = 0
-    while i < len(lines):
-        line = lines[i]
+    for line in lines:
         stripped = line.strip()
-
         if any(stripped.startswith(p) for p in skip_prefixes):
             fixed = True
-            i += 1
             continue
-
-        if re.match(r'^"[A-Za-z][^"]{2,200}"\s*$', stripped) and i + 1 < len(lines):
-            next_stripped = lines[i + 1].strip()
-            if next_stripped.startswith('—') or next_stripped.startswith('— '):
-                fixed = True
-                i += 2
-                continue
-            if re.match(r'^"[A-Za-z][^"]{2,200}"\s*$', next_stripped):
-                fixed = True
-                i += 1
-                continue
-
-        if re.match(r'^(The |I )[A-Z][a-z]', stripped) and len(stripped) > 60:
-            if i == len(lines) - 1 or (i + 1 < len(lines) and not lines[i + 1].strip()):
-                fixed = True
-                i += 1
-                continue
-
         fixed_lines.append(line)
-        i += 1
 
     return '\n'.join(fixed_lines), fixed
 
