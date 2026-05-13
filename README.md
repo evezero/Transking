@@ -197,6 +197,6 @@ python scripts/_translate_watchdog.py \
 | `--chunk-max`   | 1500  | 单块字符数。API 报错多时可调大以减少请求总数 |
 | `--chunk-delay` | 15-60 | 块间延迟。频繁触发速率限制时请增加此值      |
 
-## License
+## 📄 许可证
 
-MIT
+本项目采用 [MIT License](LICENSE)。
