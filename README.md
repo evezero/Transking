@@ -2,7 +2,7 @@
 
 这是一个全自动翻译器skill！对话窗口说明使用transking翻译，指定源目录和目标目录即可自动完成分块翻译！
 
-安装方法：在C:\Users\您的用户名\.qclaw\skills\Transking\ 把项目文件全丢进去，让QCLAW自己整合一下即可！
+安装方法：在C:\Users\您的用户名\\.qclaw\skills\Transking\ 把项目文件全丢进去，让QCLAW自己整合一下即可！
 
 批量文本翻译工具，基于 LLM，支持断点续传与看门狗自动重启。
 
