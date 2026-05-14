@@ -200,8 +200,13 @@ def fix_llm_thinking(out_dir):
     files_fixed = 0
     files = glob.glob(os.path.join(out_dir, '*.txt'))
     for fpath in files:
-        with open(fpath, 'r', encoding='utf-8') as f:
-            content = f.read()
+        try:
+            with open(fpath, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            with open(fpath, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+            log(f"  ⚠ {os.path.basename(fpath)}: 含非法UTF-8字节，已容错读取")
         
         if not check_chunk_anomaly(content):
             continue
@@ -260,6 +265,14 @@ def translate_file(src_path, out_dir, model, chunk_max, chunk_delay, error_log, 
     try:
         with open(src_path, 'r', encoding='utf-8') as f:
             raw = f.read()
+    except UnicodeDecodeError:
+        try:
+            with open(src_path, 'r', encoding='utf-8', errors='replace') as f:
+                raw = f.read()
+            log(f"  ⚠ {fname}: 含非法UTF-8字节，已容错读取")
+        except Exception as e:
+            log(f"ERROR reading {fname}: {e}")
+            return False
     except Exception as e:
         log(f"ERROR reading {fname}: {e}")
         return False
