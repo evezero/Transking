@@ -17,9 +17,13 @@ def log(msg):
     ts = time.strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{ts}] {msg}"
     try:
-        print(line)
-    except UnicodeEncodeError:
-        print(line.encode('utf-8', 'replace').decode('utf-8'))
+        sys.stdout.buffer.write((line + "\n").encode('utf-8', 'replace'))
+        sys.stdout.buffer.flush()
+    except Exception:
+        try:
+            print(line.encode('ascii', 'replace').decode('ascii'))
+        except Exception:
+            pass
     if LOG_FILE:
         try:
             with open(LOG_FILE, "a", encoding="utf-8") as f:
