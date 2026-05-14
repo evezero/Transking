@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Transking - 单文件/范围翻译脚本 v4.2
+Transking - 单文件/范围翻译脚本 v4.3
 直接调用 19000 内部 LLM 代理，支持块级断点续传与完成后自动质检。
+v4.3: 质检仅移除 <think>...</think> 标签及中间内容，不再删除英文分析性语句
 """
 import os, re, sys, time, argparse, json, traceback
 
-SCRIPT_VERSION = "4.2"
+SCRIPT_VERSION = "4.3"
 
 SYSTEM_PROMPT = (
     "你是一位资深的多领域翻译家。请将文本翻译为中文,风格自然流畅、沉稳老练,"
@@ -21,24 +22,9 @@ LLM_API_KEY  = os.environ.get('QCLAW_LLM_API_KEY', '')
 RETRY_MAX        = 3
 RETRY_COOLDOWNS  = [60, 180]
 
-LLM_THINK_PATTERNS = [
-    re.compile(r'\bLet me translate\b', re.IGNORECASE),
-    re.compile(r'\bThe user wants me to translate\b', re.IGNORECASE),
-    re.compile(r'\bThis appears to be\b', re.IGNORECASE),
-    re.compile(r'\bKey points to maintain\b', re.IGNORECASE),
-    re.compile(r'\bThe constraint list\b', re.IGNORECASE),
-    re.compile(r'\bNo translation of names like\b', re.IGNORECASE),
-    re.compile(r'\bI notice the constraint\b', re.IGNORECASE),
-    re.compile(r'\bThe conversation reveals\b', re.IGNORECASE),
-    re.compile(r'\bThe dialogue should\b', re.IGNORECASE),
-    re.compile(r'\bwait, I think I\'?m misunderstanding\b', re.IGNORECASE),
-    re.compile(r'\bLet me (re-?)?read\b', re.IGNORECASE),
-    re.compile(r'\bActually looking at the constraints\b', re.IGNORECASE),
-    re.compile(r'\bHowever, looking at the (paragraph|passage|text|content)\b', re.IGNORECASE),
-    re.compile(r'\bThe narrative (flow|continues|passage)\b', re.IGNORECASE),
-]
-
-THINKING_TAG_PAT = re.compile(r'<think>.*?</think>', re.DOTALL)
+# 质检相关正则：仅处理 <think>...</think> 标签
+# 成对标签：匹配 <think>...</think> 及中间内容
+THINKING_TAG_PAIR = re.compile(r'<think>.*?</think>', re.DOTALL)
 
 def log(msg):
     ts = time.strftime('%H:%M:%S')
@@ -49,48 +35,32 @@ def log(msg):
         sys.stdout.write(f"[{ts}] {msg.encode('utf-8','replace').decode('utf-8')}\n")
         sys.stdout.flush()
 
-def check_chunk_anomaly(text):
+def has_thinking_tags(text):
+    """检测文本中是否包含 <think> 和 </think> 标签对"""
     if not text or len(text.strip()) < 20:
         return False
-    for pat in LLM_THINK_PATTERNS:
-        if pat.search(text):
-            return True
-    if THINKING_TAG_PAT.search(text):
-        return True
-    return False
+    return bool(THINKING_TAG_PAIR.search(text))
 
-def fix_chunk_llm_artifacts(text):
-    if not check_chunk_anomaly(text):
+def remove_thinking_tags(text):
+    """
+    移除 LLM 思考标签及内容：
+    1. 成对的 <think>...</think> → 移除标签及中间全部内容
+    2. 清理多余空行
+
+    设计原则：宁可保留异常信息，也不误删因审查等原因保留的英文原文。
+    """
+    if not has_thinking_tags(text):
         return text, False
 
-    fixed = False
+    original = text
 
-    # 1. 移除 <think>...</think> 标签及内容
-    new_text = THINKING_TAG_PAT.sub('', text)
-    if new_text != text:
-        fixed = True
-        text = new_text
+    # 1. 移除成对的 <think>...</think>（含中间内容）
+    text = THINKING_TAG_PAIR.sub('', text)
 
-    # 2. 移除英文分析性语句
-    lines = text.split('\n')
-    fixed_lines = []
+    # 2. 清理多余空行
+    text = re.sub(r'\n{3,}', '\n\n', text)
 
-    skip_prefixes = (
-        'The user wants me to translate', 'This appears to be', 'Key points to maintain',
-        'The constraint list', 'No translation of names like', 'I notice the constraint',
-        'The conversation reveals', 'The dialogue should', 'wait, I think',
-        'Let me translate', 'Let me re-read', 'Actually looking at the constraints',
-        'However, looking at the', 'The narrative',
-    )
-
-    for line in lines:
-        stripped = line.strip()
-        if any(stripped.startswith(p) for p in skip_prefixes):
-            fixed = True
-            continue
-        fixed_lines.append(line)
-
-    return '\n'.join(fixed_lines), fixed
+    return text, text != original
 
 def chunk_text(text, target_max=1000):
     paragraphs = text.split('\n\n')
@@ -208,15 +178,15 @@ def fix_llm_thinking(out_dir):
                 content = f.read()
             log(f"  ⚠ {os.path.basename(fpath)}: 含非法UTF-8字节，已容错读取")
         
-        if not check_chunk_anomaly(content):
+        if not has_thinking_tags(content):
             continue
             
-        fixed_content, did_fix = fix_chunk_llm_artifacts(content)
+        fixed_content, did_fix = remove_thinking_tags(content)
         if did_fix:
             with open(fpath, 'w', encoding='utf-8') as f:
                 f.write(fixed_content)
             files_fixed += 1
-            log(f"  ✓ 清理 {os.path.basename(fpath)}: LLM思考过程")
+            log(f"  ✓ 清理 {os.path.basename(fpath)}: <think>标签")
 
     return files_fixed
 
@@ -226,7 +196,7 @@ def run_post_completion_repair(out_dir):
     
     files_fixed_llm = fix_llm_thinking(out_dir)
 
-    log("质检修复完成。")
+    log(f"质检修复完成。共清理 {files_fixed_llm} 个文件。")
     log("=" * 50)
     return {'files_fixed_llm': files_fixed_llm}
 
