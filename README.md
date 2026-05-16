@@ -31,8 +31,8 @@
 ```
 Transking/
 ├── scripts/
-│   ├── auto_translate.py        # 主翻译脚本 v4.2
-│   └── _translate_watchdog.py   # 看门狗脚本 v5.3
+│   ├── auto_translate.py        # 主翻译脚本
+│   └── _translate_watchdog.py   # 看门狗脚本
 └── references/
     └── translation_guide.md     # 使用指南
 ```
