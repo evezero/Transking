@@ -28,12 +28,13 @@ THINKING_TAG_PAIR = re.compile(r'<think>.*?</think>', re.DOTALL)
 
 def log(msg):
     ts = time.strftime('%H:%M:%S')
+    safe = f"[{ts}] {msg}"
     try:
-        sys.stdout.write(f"[{ts}] {msg}\n")
+        sys.stdout.write(safe + '\n')
         sys.stdout.flush()
     except UnicodeEncodeError:
-        sys.stdout.write(f"[{ts}] {msg.encode('utf-8','replace').decode('utf-8')}\n")
-        sys.stdout.flush()
+        sys.stdout.buffer.write((safe + '\n').encode('utf-8', 'replace'))
+        sys.stdout.buffer.flush()
 
 def has_thinking_tags(text):
     """检测文本中是否包含 <think> 和 </think> 标签对"""
